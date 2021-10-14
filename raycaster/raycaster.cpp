@@ -4,6 +4,7 @@
 
 
 #define frameCapActive false
+#define uvDebug false
 const int frameCap = 1000 / 60;
 #define wallAmount 8
 const int height = 512;
@@ -97,13 +98,19 @@ struct hit
 {
 	double dist;
 	int mapVal;
+	double uvx;
 };
 
+float frac(float a) 
+{
+	return a - (int)a;
+}
 const double PI = 3.141592653;
 hit* raycast(double angle)
 {
 	double dist = 0;
 	int i, j, x, y;
+	double deltax, deltay;
 	hit* result = nullptr;
 	while (true)
 	{
@@ -115,9 +122,15 @@ hit* raycast(double angle)
 
 		if (j < wallAmount && i < wallAmount && map[j][i] > 0)
 		{
+			deltax = frac((float)x / (float)mapWallW);
+			deltay = frac((float)y / (float)mapWallH);
 			result = new hit();
 			result->dist = dist;
 			result->mapVal = map[j][i];
+#if uvDebug
+			std::cout << deltax << " " << deltay << " ";
+#endif
+			result->uvx = frac(deltax + deltay);
 			break;
 		}
 
@@ -236,7 +249,7 @@ int main(int argc, char* args[])
 		int i = 0;
 		while (i < RAY_AMOUNT)
 		{
-			ray_angle = angle + (double)((float)fov / (float)RAY_AMOUNT) * (float)(i + RAY_AMOUNT * -0.5);
+			ray_angle = angle + (double)((double)fov / (double)RAY_AMOUNT) * (double)(i + RAY_AMOUNT * -0.5);
 			ray_angle = ray_angle / 180 * PI;
 			hitData = raycast(ray_angle);
 			if (hitData)
@@ -244,9 +257,12 @@ int main(int argc, char* args[])
 				wallDrawArea.h = (double)height / (hitData->dist * cos(ray_angle - fwd)) * 50.0f;
 				wallDrawArea.y = hheight - wallDrawArea.h * 0.5;
 				wallDrawArea.x = (int)((double)hwidth + ray_width * (double)i);
-				SDL_SetRenderDrawColor(renderer, wall_colors[hitData->mapVal][0],
-												wall_colors[hitData->mapVal][1],
-												wall_colors[hitData->mapVal][2], SDL_ALPHA_OPAQUE);
+#if uvDebug
+				std::cout << hitData->uvx << " ";
+#endif
+				SDL_SetRenderDrawColor(renderer, wall_colors[hitData->mapVal][0] * hitData->uvx,
+												wall_colors[hitData->mapVal][1] * hitData->uvx,
+												wall_colors[hitData->mapVal][2] * hitData->uvx, SDL_ALPHA_OPAQUE);
 				SDL_RenderFillRect(renderer, &wallDrawArea);
 				delete hitData;
 			}
@@ -256,16 +272,6 @@ int main(int argc, char* args[])
 		drawPlayer();
 		
 		SDL_RenderPresent(renderer);
-		/*SDL_Event event;
-		while (SDL_PollEvent(&event))
-		{
-			switch (event.type)
-			{
-			case SDL_QUIT:
-				running = false;
-				break;
-			}
-		}*/
 
 		//performance tracking
 		frame_end = SDL_GetTicks();
