@@ -23,6 +23,9 @@ const int stepSize = 600;
 SDL_Window* window = nullptr;
 SDL_Surface* screen = nullptr;
 SDL_Renderer* renderer = nullptr;
+SDL_Texture* wall1;
+SDL_Texture* wall2;
+SDL_Texture* wall3;
 
 const int playerWH = 10;
 int playerX = 80;
@@ -38,16 +41,48 @@ int map[wallAmount][wallAmount] = {
 	{3, 0, 0, 0, 0, 0, 0, 3},
 	{1, 3, 1, 2, 3, 2, 1, 2}};
 
+SDL_Texture* textureMap[wallAmount][wallAmount];
+
 int wall_colors[4][3] = {
 	{0, 0, 0},
 	{0xFF, 0, 0},
 	{0, 0XFF, 0},
 	{0, 0, 0XFF}};
 
+
+void init_text_ref() 
+{
+	int i, j = 0;
+	while (j < wallAmount)
+	{
+		i = 0;
+		while (i < wallAmount)
+		{
+			switch (map[j][i])
+			{
+			case 1:
+				textureMap[j][i] = wall1;
+				break;
+			case 2:
+				textureMap[j][i] = wall2;
+				break;
+			case 3:
+				textureMap[j][i] = wall3;
+				break;
+			default:
+				textureMap[j][i] = nullptr;
+				break;
+			}
+			i++;
+		}
+		j++;
+	}
+
+}
+
 //https://wiki.libsdl.org/SDL_RenderDrawLine
 void drawMap() 
 {
-	
 	SDL_Rect rect;
 	int i = 0, j;
 	rect.w = mapWallW;
@@ -97,7 +132,7 @@ void drawPlayer()
 struct hit
 {
 	double dist;
-	int mapVal;
+	SDL_Texture* mapVal;
 	double uvx;
 };
 
@@ -106,12 +141,11 @@ float frac(float a)
 	return a - (int)a;
 }
 const double PI = 3.141592653;
-hit* raycast(double angle)
+bool raycast(double angle, hit* out)
 {
 	double dist = 0;
 	int i, j, x, y;
 	double deltax, deltay;
-	hit* result = nullptr;
 	while (true)
 	{
 		x = (int)(playerX + dist * cos(angle));
@@ -124,14 +158,15 @@ hit* raycast(double angle)
 		{
 			deltax = frac((float)x / (float)mapWallW);
 			deltay = frac((float)y / (float)mapWallH);
-			result = new hit();
-			result->dist = dist;
-			result->mapVal = map[j][i];
+			new(out) hit();
+			out->dist = dist;
+			out->mapVal = textureMap[j][i];
 #if uvDebug
 			std::cout << deltax << " " << deltay << " ";
 #endif
-			result->uvx = frac(deltax + deltay);
-			break;
+
+			out->uvx = frac(deltax + deltay);
+			return true;
 		}
 
 		if (x < hwidth)
@@ -142,7 +177,7 @@ hit* raycast(double angle)
 
 		dist += 1;
 	}
-	return result;
+	return false;
 }
 
 int main(int argc, char* args[])
@@ -160,6 +195,18 @@ int main(int argc, char* args[])
 
 
 	
+	//wall textures
+	SDL_Surface* swall1 = SDL_LoadBMP("wall1.bmp");
+	SDL_Surface* swall2 = SDL_LoadBMP("wall2.bmp");
+	SDL_Surface* swall3 = SDL_LoadBMP("wall3.bmp");
+	wall1 = SDL_CreateTextureFromSurface(renderer, swall1);
+	SDL_FreeSurface(swall1);
+	wall2 = SDL_CreateTextureFromSurface(renderer, swall2);
+	SDL_FreeSurface(swall2);
+	wall3 = SDL_CreateTextureFromSurface(renderer, swall3);
+	SDL_FreeSurface(swall3);
+	init_text_ref();
+	
 	screen = SDL_GetWindowSurface(window);
 	Uint32 frame_begin, frame_end, frame_time = 0, frame_rate;
 	SDL_Rect ceiling, floor;
@@ -172,15 +219,19 @@ int main(int argc, char* args[])
 	floor.w = hwidth;
 	floor.h = hheight;
 
-	const double ray_width = double(hwidth / RAY_AMOUNT) + 1;
+	const double ray_width = double(hwidth / RAY_AMOUNT) + 100 / (double)RAY_AMOUNT;
 	SDL_Rect wallDrawArea;
 	wallDrawArea.w = ray_width;
+	SDL_Rect textureCrop;
+	textureCrop.h = 128;
+	textureCrop.w = double((double)swall1->w / (double)RAY_AMOUNT) + 100 /(double) RAY_AMOUNT;
+	textureCrop.y = 0;
 	SDL_Event event;
-	hit* hitData;
+	hit hitData;
 	double angle = 0, fwd, right;
-	//const double fov_rads = fov / 180 * PI /  RAY_AMOUNT;
 	double ray_angle;
 	int unvalidated_X, unvalidated_Y, x_test, y_test;
+
 	bool running = true;
 	while (running)
 	{
@@ -251,20 +302,16 @@ int main(int argc, char* args[])
 		{
 			ray_angle = angle + (double)((double)fov / (double)RAY_AMOUNT) * (double)(i + RAY_AMOUNT * -0.5);
 			ray_angle = ray_angle / 180 * PI;
-			hitData = raycast(ray_angle);
-			if (hitData)
+			if (raycast(ray_angle, &hitData))
 			{
-				wallDrawArea.h = (double)height / (hitData->dist * cos(ray_angle - fwd)) * 50.0f;
+				wallDrawArea.h = (double)height / (hitData.dist * cos(ray_angle - fwd)) * 50.0f;
 				wallDrawArea.y = hheight - wallDrawArea.h * 0.5;
 				wallDrawArea.x = (int)((double)hwidth + ray_width * (double)i);
+				textureCrop.x = (int)((float)hitData.uvx * (float)128);
 #if uvDebug
-				std::cout << hitData->uvx << " ";
+				std::cout << hitData.uvx << " " << textureCrop.x << " ";
 #endif
-				SDL_SetRenderDrawColor(renderer, wall_colors[hitData->mapVal][0] * hitData->uvx,
-												wall_colors[hitData->mapVal][1] * hitData->uvx,
-												wall_colors[hitData->mapVal][2] * hitData->uvx, SDL_ALPHA_OPAQUE);
-				SDL_RenderFillRect(renderer, &wallDrawArea);
-				delete hitData;
+				SDL_RenderCopy(renderer, hitData.mapVal, &textureCrop, &wallDrawArea);
 			}
 			i++;
 		}
@@ -287,8 +334,11 @@ int main(int argc, char* args[])
 		SDL_Delay(frameCap - frame_time);
 #endif
 	}
-	
 
+	SDL_DestroyTexture(wall1);
+	SDL_DestroyTexture(wall2);
+	SDL_DestroyTexture(wall3);
+	SDL_DestroyRenderer(renderer);
 	SDL_DestroyWindow(window);
 	SDL_Quit();
 
