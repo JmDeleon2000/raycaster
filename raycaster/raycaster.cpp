@@ -15,7 +15,7 @@ const int mapWallW = hwidth / wallAmount;
 const int mapWallH = mapWallW;
 const int hmapWallW = mapWallW / 2;
 const int hmapWallH = mapWallH / 2;
-const double MAX_DIST = 100;
+const float MAX_DIST = 1000;
 
 const int fov = 60;
 const int RAY_AMOUNT = 100;
@@ -27,6 +27,10 @@ SDL_Renderer* renderer = nullptr;
 SDL_Texture* wall1;
 SDL_Texture* wall2;
 SDL_Texture* wall3;
+SDL_Texture* ceilingText;
+SDL_Texture* floorText;
+SDL_Texture* powerUpIcon;
+SDL_Texture* cacodemon;
 
 const int playerWH = 10;
 int playerX = 80;
@@ -50,6 +54,15 @@ int wall_colors[4][3] = {
 	{0, 0XFF, 0},
 	{0, 0, 0XFF} };
 
+struct enemy
+{
+	int x = 0;
+	int y = 0;
+	SDL_Texture* text = nullptr;
+};
+
+enemy enemies[3];
+
 
 void init_text_ref()
 {
@@ -69,6 +82,9 @@ void init_text_ref()
 				break;
 			case 3:
 				textureMap[j][i] = wall3;
+				break;
+			case-1:
+				textureMap[j][i] = powerUpIcon;
 				break;
 			default:
 				textureMap[j][i] = nullptr;
@@ -132,25 +148,25 @@ void drawPlayer()
 
 struct hit
 {
-	double dist;
+	float dist;
 	SDL_Texture* mapVal;
-	double uvx;
+	float uvx;
 };
 
 float frac(float a)
 {
 	return a - (int)a;
 }
-const double PI = 3.141592653;
-bool raycast(double angle, hit* out)
+const float PI = 3.141592653;
+bool raycast(float angle, hit* out)
 {
-	double dist = 0;
-	const double stepsize = 1;
+	float dist = 0;
+	const float stepsize = 1;
 	int i, j;
-	double x = playerX, y = playerY;
-	double deltax, deltay;
-	const double stepx = stepsize * cos(angle);
-	const double stepy = stepsize * sin(angle);
+	float x = playerX, y = playerY;
+	float deltax, deltay;
+	const float stepx = stepsize * cosf(angle);
+	const float stepy = stepsize * sinf(angle);
 
 	while (true)
 	{
@@ -173,55 +189,34 @@ bool raycast(double angle, hit* out)
 #if uvDebug
 			std::cout << deltax << " " << deltay << " ";
 #endif
+			
+
 			SDL_RenderDrawLine(renderer, playerX, playerY, (int)x, (int)y);
 			return true;
+			
 		}
+
 
 		dist += 1;
 	}
 	return false;
 }
 
-
-bool mainMenu()
+bool raycast(int xstep, int ystep, float dist, hit*out)
 {
-	bool running = true;
-	SDL_Event event;
-	SDL_Surface* sbg = SDL_LoadBMP("menuBG.bmp");
-	SDL_Texture* bg = SDL_CreateTextureFromSurface(renderer, sbg);
-	SDL_FreeSurface(sbg);
-
-
-	while (running)
+	float d = 0;
+	float x, y;
+	x = playerX;
+	y = playerY;
+	while (d < dist)
 	{
-		//SDL_RenderCopy(renderer, bg, NULL, &all);
-		//SDL_SetRenderDrawColor(renderer, 0, 0, 0, SDL_ALPHA_OPAQUE);
-		//SDL_RenderFillRect(renderer, NULL);
-		while (SDL_PollEvent(&event))
-		{
-			switch (event.type)
-			{
-			case SDL_KEYDOWN:
-				switch (event.key.keysym.sym)
-				{
-				case SDLK_RETURN:
-					running = false;
-					break;
-				default:
-					break;
-				}
-				break;
-			default:
-				break;
-			}
-		}
-
-		SDL_Delay(100);
+		x += xstep;
+		y += ystep;
+		d += 1;
 	}
-
-
-	return true;
+	return false;
 }
+
 
 bool dispMenu() 
 {
@@ -325,43 +320,71 @@ int main(int argc, char* args[])
 		return -1;
 
 
-
+	
 	//wall textures
-	SDL_Surface* swall1 = SDL_LoadBMP("wall1.bmp");
-	wall1 = SDL_CreateTextureFromSurface(renderer, swall1);
-	SDL_FreeSurface(swall1);
-	SDL_Surface* swall2 = SDL_LoadBMP("wall2.bmp");
-	wall2 = SDL_CreateTextureFromSurface(renderer, swall2);
-	SDL_FreeSurface(swall2);
-	SDL_Surface* swall3 = SDL_LoadBMP("wall3.bmp");
-	wall3 = SDL_CreateTextureFromSurface(renderer, swall3);
-	SDL_FreeSurface(swall3);
+	{
+		SDL_Surface* swall1 = SDL_LoadBMP("wall1.bmp");
+		wall1 = SDL_CreateTextureFromSurface(renderer, swall1);
+		SDL_FreeSurface(swall1);
+		SDL_Surface* swall2 = SDL_LoadBMP("wall2.bmp");
+		wall2 = SDL_CreateTextureFromSurface(renderer, swall2);
+		SDL_FreeSurface(swall2);
+		SDL_Surface* swall3 = SDL_LoadBMP("wall3.bmp");
+		wall3 = SDL_CreateTextureFromSurface(renderer, swall3);
+		SDL_FreeSurface(swall3);
+		SDL_Surface* sceiling = SDL_LoadBMP("ceiling.bmp");
+		ceilingText = SDL_CreateTextureFromSurface(renderer, sceiling);
+		SDL_FreeSurface(sceiling);
+		SDL_Surface* sfloor = SDL_LoadBMP("floor.bmp");
+		floorText = SDL_CreateTextureFromSurface(renderer, sfloor);
+		SDL_FreeSurface(sfloor);
+		SDL_Surface* spowerUpIcon = SDL_LoadBMP("powerUP.bmp");
+		SDL_SetColorKey(spowerUpIcon, SDL_TRUE, SDL_MapRGB(spowerUpIcon->format, 255, 0, 255));
+		powerUpIcon = SDL_CreateTextureFromSurface(renderer, spowerUpIcon);
+		SDL_FreeSurface(spowerUpIcon);
+		SDL_Surface* scacodemon = SDL_LoadBMP("cacodemon.bmp");
+		SDL_SetColorKey(scacodemon, SDL_TRUE, SDL_MapRGB(scacodemon->format, 255, 0, 255));
+		cacodemon = SDL_CreateTextureFromSurface(renderer, scacodemon);
+		SDL_FreeSurface(scacodemon);
+	}
 	init_text_ref();
+	
 
-
-
+	enemies[0].x = playerX * 2;
+	enemies[0].y = playerY;
+	enemies[0].text = powerUpIcon;
+	enemies[1].x = playerX;
+	enemies[1].y = 500;
+	enemies[1].text = cacodemon;
+	enemies[2].x = playerX * 5;
+	enemies[2].y = playerY*10;
+	enemies[2].text = powerUpIcon;
+	
 	Uint32 frame_begin, frame_end, frame_time = 0, frame_rate;
-	SDL_Rect ceiling, floor;
-	ceiling.x = hwidth;
-	ceiling.y = 0;
-	ceiling.w = hwidth;
-	ceiling.h = hheight;
-	floor.x = hwidth;
-	floor.y = hheight;
-	floor.w = hwidth;
-	floor.h = hheight;
+	SDL_Rect ceilingRect, floorRect;
+	ceilingRect.x = hwidth;
+	ceilingRect.y = 0;
+	ceilingRect.w = hwidth;
+	ceilingRect.h = hheight;
+	floorRect.x = hwidth;
+	floorRect.y = hheight;
+	floorRect.w = hwidth;
+	floorRect.h = hheight;
 
-	const double ray_width = double(hwidth / RAY_AMOUNT) + 100 / (double)RAY_AMOUNT;
+	const float ray_width = float(hwidth / RAY_AMOUNT) + 100 / (float)RAY_AMOUNT;
 	SDL_Rect wallDrawArea;
 	wallDrawArea.w = ray_width;
 	SDL_Rect textureCrop;
 	textureCrop.h = 128;
-	textureCrop.w = double((double)swall1->w / (double)RAY_AMOUNT) + 100 / (double)RAY_AMOUNT;
+	textureCrop.w = float((float)128 / (float)RAY_AMOUNT) + 100 / (float)RAY_AMOUNT;
 	textureCrop.y = 0;
 	SDL_Event event;
+	SDL_Point rotationSource;
+	rotationSource.x = hwidth / 2;
+	rotationSource.y = hheight;
 	hit hitData;
-	double angle = 0, fwd, right;
-	double ray_angle;
+	float angle = 0, fwd, right;
+	float ray_angle;
 	int unvalidated_X, unvalidated_Y, x_test, y_test;
 	int colorMod;
 	bool running = dispMenu();
@@ -391,20 +414,20 @@ int main(int argc, char* args[])
 					angle += 360 * frame_time / 1000;
 					break;
 				case SDLK_a:
-					unvalidated_X -= stepSize * cos(right) * frame_time / 1000;
-					unvalidated_Y -= stepSize * sin(right) * frame_time / 1000;
+					unvalidated_X -= stepSize * cosf(right) * frame_time / 1000;
+					unvalidated_Y -= stepSize * sinf(right) * frame_time / 1000;
 					break;
 				case SDLK_d:
-					unvalidated_X += stepSize * cos(right) * frame_time / 1000;
-					unvalidated_Y += stepSize * sin(right) * frame_time / 1000;
+					unvalidated_X += stepSize * cosf(right) * frame_time / 1000;
+					unvalidated_Y += stepSize * sinf(right) * frame_time / 1000;
 					break;
 				case SDLK_w:
-					unvalidated_X += stepSize * cos(fwd) * frame_time / 1000;
-					unvalidated_Y += stepSize * sin(fwd) * frame_time / 1000;
+					unvalidated_X += stepSize * cosf(fwd) * frame_time / 1000;
+					unvalidated_Y += stepSize * sinf(fwd) * frame_time / 1000;
 					break;
 				case SDLK_s:
-					unvalidated_X -= stepSize * cos(fwd) * frame_time / 1000;
-					unvalidated_Y -= stepSize * sin(fwd) * frame_time / 1000;
+					unvalidated_X -= stepSize * cosf(fwd) * frame_time / 1000;
+					unvalidated_Y -= stepSize * sinf(fwd) * frame_time / 1000;
 					break;
 				case SDLK_ESCAPE:
 					running = false;
@@ -426,33 +449,57 @@ int main(int argc, char* args[])
 		}
 
 		//rendering
-		SDL_SetRenderDrawColor(renderer, 191, 57, 57, SDL_ALPHA_OPAQUE);
-		SDL_RenderFillRect(renderer, &ceiling);
-		SDL_SetRenderDrawColor(renderer, 97, 98, 99, SDL_ALPHA_OPAQUE);
-		SDL_RenderFillRect(renderer, &floor);
+		//https://wiki.libsdl.org/SDL_RenderCopyEx
+		// altura = altura*sen(x) + ancho * cos(x)
+		//SDL_RenderCopyEx(renderer, floorText, NULL, &floorRect, -angle, NULL, SDL_FLIP_NONE);
+		//SDL_RenderCopyEx(renderer, ceilingText, NULL, &ceilingRect, -angle, NULL, SDL_FLIP_NONE);
+		SDL_RenderCopy(renderer, floorText, NULL, &floorRect);
+		SDL_RenderCopy(renderer, ceilingText, NULL, &ceilingRect);
 		drawMap();
 		int i = 0;
 		SDL_SetRenderDrawColor(renderer, 0xFF, 0xFF, 0xFF, SDL_ALPHA_OPAQUE);
 		while (i < RAY_AMOUNT)
 		{
-			ray_angle = angle + (double)((double)fov / (double)RAY_AMOUNT) * (double)(i + RAY_AMOUNT * -0.5);
+			ray_angle = angle + (float)((float)fov / (float)RAY_AMOUNT) * (float)(i + RAY_AMOUNT * -0.5);
 			ray_angle = ray_angle / 180 * PI;
 			if (raycast(ray_angle, &hitData))
 			{
-				wallDrawArea.h = (double)height / (hitData.dist * cos(ray_angle - fwd)) * 50.0f;
+				wallDrawArea.h = (float)height / (hitData.dist * cosf(ray_angle - fwd)) * 50.0f;
 				wallDrawArea.y = hheight - wallDrawArea.h * 0.5;
-				wallDrawArea.x = (int)((double)hwidth + ray_width * (double)i);
+				wallDrawArea.x = (int)((float)hwidth + ray_width * (float)i);
 				textureCrop.x = (int)((float)hitData.uvx * (float)128);
 				colorMod = 0xFF / (hitData.dist / MAX_DIST);
 				colorMod = colorMod < 0xFF ? colorMod : 0xFF;
-				SDL_SetTextureColorMod(hitData.mapVal, colorMod, colorMod, colorMod);
 #if uvDebug
 				std::cout << hitData.uvx << " " << textureCrop.x << " ";
 #endif
+				SDL_SetTextureColorMod(hitData.mapVal, colorMod, colorMod, colorMod);
 				SDL_RenderCopy(renderer, hitData.mapVal, &textureCrop, &wallDrawArea);
 			}
 			i++;
 		}
+		i = 0;
+		//powerUp/enemies
+		while (i < 2)
+		{	
+			float ABx, ABy;
+			ABx = enemies[i].x - playerX;
+			ABy = enemies[i].y - playerY;
+			float dot = (float)playerX * (float)ABx + (float)playerY * (float)ABy;
+			dot /= sqrtf(playerX * playerX + playerY * playerY);
+			dot /= sqrtf(ABx * ABx + ABy * ABy);
+			float spriteAngle = acosf(dot) * 180 / PI;
+			float angleDiff = (int)(angle + 30) % 360 - spriteAngle;
+			std::cout << " detected " << angleDiff;
+			if (angleDiff >= -30 && angleDiff <= 30) 
+			{
+				SDL_RenderCopy(renderer, enemies[i].text, NULL, NULL);
+
+			}
+
+			i++;
+		}
+		
 
 		drawPlayer();
 
