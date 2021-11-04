@@ -13,9 +13,12 @@ const int hwidth = width / 2;
 const int hheight = height / 2;
 const int mapWallW = hwidth / wallAmount;
 const int mapWallH = mapWallW;
+const int mapWallWDisp = mapWallW * 0.3;
+const int mapWallHDisp = mapWallH * 0.3;
 const int hmapWallW = mapWallW / 2;
 const int hmapWallH = mapWallH / 2;
 const float MAX_DIST = 1000;
+const float maxheadbob = 0.02;
 
 const int fov = 60;
 const int RAY_AMOUNT = 100;
@@ -31,19 +34,22 @@ SDL_Texture* ceilingText;
 SDL_Texture* floorText;
 SDL_Texture* powerUpIcon;
 SDL_Texture* cacodemon;
+SDL_Texture* hitler;
 
 const int playerWH = 10;
 int playerX = 80;
 int playerY = 80;
+int playerDispX = playerX * 0.3;
+int playerDispY = playerY * 0.3;
 
 int map[wallAmount][wallAmount] = {
 	{1, 1, 2, 3, 2, 1, 3, 1},
-	{1, 0, 0, 0, 0, 2, 0, 1},
+	{1, 0, -1, 0, 0, 2, -3, 1},
 	{2, 0, 0, 3, 2, 1, 0, 1},
 	{2, 3, 0, 1, 0, 0, 0, 2},
 	{1, 0, 0, 1, 2, 3, 0, 2},
 	{1, 0, 2, 2, 0, 0, 0, 3},
-	{3, 0, 0, 0, 0, 0, 0, 3},
+	{3, -2, 0, 0, 0, 0, 0, 3},
 	{1, 3, 1, 2, 3, 2, 1, 2} };
 
 SDL_Texture* textureMap[wallAmount][wallAmount];
@@ -86,6 +92,12 @@ void init_text_ref()
 			case-1:
 				textureMap[j][i] = powerUpIcon;
 				break;
+			case-2:
+				textureMap[j][i] = cacodemon;
+				break;
+			case-3:
+				textureMap[j][i] = hitler;
+				break;
 			default:
 				textureMap[j][i] = nullptr;
 				break;
@@ -102,20 +114,17 @@ void drawMap()
 {
 	SDL_Rect rect;
 	int i = 0, j;
-	rect.w = mapWallW;
-	rect.h = mapWallH;
+	rect.w = mapWallWDisp;
+	rect.h = mapWallHDisp;
 	while (i < 8)
 	{
 		j = 0;
 		while (j < 8)
 		{
-			rect.x = mapWallW * j;
-			rect.y = mapWallH * i;
+			rect.x = mapWallWDisp * j;
+			rect.y = mapWallHDisp * i;
 			switch (map[i][j])
 			{
-			case 0:
-				SDL_SetRenderDrawColor(renderer, 0x6F, 0x6F, 0x6F, SDL_ALPHA_OPAQUE);
-				break;
 			case 1:
 				SDL_SetRenderDrawColor(renderer, 0XFF, 0, 0, SDL_ALPHA_OPAQUE);
 				break;
@@ -126,6 +135,7 @@ void drawMap()
 				SDL_SetRenderDrawColor(renderer, 0, 0, 0xFF, SDL_ALPHA_OPAQUE);
 				break;
 			default:
+				SDL_SetRenderDrawColor(renderer, 0x6F, 0x6F, 0x6F, SDL_ALPHA_OPAQUE);
 				break;
 			}
 
@@ -139,8 +149,10 @@ void drawMap()
 void drawPlayer()
 {
 	SDL_Rect rect;
-	rect.x = playerX - playerWH / 2;
-	rect.y = playerY - playerWH / 2;
+	playerDispX = playerX * 0.3;
+	playerDispY = playerY * 0.3;
+	rect.x =  playerDispX - playerWH / 2;
+	rect.y = playerDispY - playerWH / 2;
 	rect.w = rect.h = playerWH;
 	SDL_SetRenderDrawColor(renderer, 0, 0, 0, SDL_ALPHA_OPAQUE);
 	SDL_RenderFillRect(renderer, &rect);
@@ -151,6 +163,9 @@ struct hit
 	float dist;
 	SDL_Texture* mapVal;
 	float uvx;
+	SDL_Texture* itemVal;
+	float itemDist;
+	float itemUvx;
 };
 
 float frac(float a)
@@ -167,6 +182,7 @@ bool raycast(float angle, hit* out)
 	float deltax, deltay;
 	const float stepx = stepsize * cosf(angle);
 	const float stepy = stepsize * sinf(angle);
+	out->itemVal = nullptr;
 
 	while (true)
 	{
@@ -176,7 +192,7 @@ bool raycast(float angle, hit* out)
 		i = (int)x / mapWallW;
 		j = (int)y / mapWallH;
 
-		if (j < wallAmount && i < wallAmount && map[j][i] > 0)
+		if (j < wallAmount && i < wallAmount && map[j][i] != 0)
 		{
 			deltax = frac((float)x / (float)mapWallW);
 			deltay = frac((float)y / (float)mapWallH);
@@ -189,10 +205,17 @@ bool raycast(float angle, hit* out)
 #if uvDebug
 			std::cout << deltax << " " << deltay << " ";
 #endif
-			
-
-			SDL_RenderDrawLine(renderer, playerX, playerY, (int)x, (int)y);
-			return true;
+			if (!out->itemVal && map[j][i] < 0) 
+			{
+				out->itemVal = textureMap[j][i];
+				out->itemDist = dist;
+				out->itemUvx = out->uvx;
+			}
+			if (map[j][i] > 0)
+			{
+				SDL_RenderDrawLine(renderer, playerDispX, playerDispY, (int)(x - hwidth) * 0.3, (int)y * 0.3);
+				return true;
+			}
 			
 		}
 
@@ -201,22 +224,6 @@ bool raycast(float angle, hit* out)
 	}
 	return false;
 }
-
-bool raycast(int xstep, int ystep, float dist, hit*out)
-{
-	float d = 0;
-	float x, y;
-	x = playerX;
-	y = playerY;
-	while (d < dist)
-	{
-		x += xstep;
-		y += ystep;
-		d += 1;
-	}
-	return false;
-}
-
 
 bool dispMenu() 
 {
@@ -308,7 +315,7 @@ bool dispMenu()
 
 int main(int argc, char* args[])
 {
-	if (SDL_Init(SDL_INIT_VIDEO) < 0)
+	if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO) < 0)
 		return -1;
 
 	window = SDL_CreateWindow("Doom de la Mega", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, width, height, SDL_WINDOW_SHOWN);
@@ -346,6 +353,10 @@ int main(int argc, char* args[])
 		SDL_SetColorKey(scacodemon, SDL_TRUE, SDL_MapRGB(scacodemon->format, 255, 0, 255));
 		cacodemon = SDL_CreateTextureFromSurface(renderer, scacodemon);
 		SDL_FreeSurface(scacodemon);
+		SDL_Surface* shitler = SDL_LoadBMP("hitler.bmp");
+		SDL_SetColorKey(shitler, SDL_TRUE, SDL_MapRGB(shitler->format, 255, 0, 255));
+		hitler = SDL_CreateTextureFromSurface(renderer, shitler);
+		SDL_FreeSurface(shitler);
 	}
 	init_text_ref();
 	
@@ -362,16 +373,17 @@ int main(int argc, char* args[])
 	
 	Uint32 frame_begin, frame_end, frame_time = 0, frame_rate;
 	SDL_Rect ceilingRect, floorRect;
-	ceilingRect.x = hwidth;
+	ceilingRect.x = 0;
 	ceilingRect.y = 0;
-	ceilingRect.w = hwidth;
+	ceilingRect.w = width;
 	ceilingRect.h = hheight;
-	floorRect.x = hwidth;
+	floorRect.x = 0;
 	floorRect.y = hheight;
-	floorRect.w = hwidth;
+	floorRect.w = width;
 	floorRect.h = hheight;
 
-	const float ray_width = float(hwidth / RAY_AMOUNT) + 100 / (float)RAY_AMOUNT;
+	float headbob = 0;
+	const float ray_width = float(width / RAY_AMOUNT) + 100 / (float)RAY_AMOUNT;
 	SDL_Rect wallDrawArea;
 	wallDrawArea.w = ray_width;
 	SDL_Rect textureCrop;
@@ -398,6 +410,8 @@ int main(int argc, char* args[])
 		unvalidated_X = playerX;
 		unvalidated_Y = playerY;
 		frame_begin = SDL_GetTicks();
+		headbob = headbob > 0 ? (headbob < 0.00005 ? 0 : headbob - maxheadbob * frame_time / 300) : headbob;
+		headbob = headbob < 0 ? (headbob > -0.00005 ? 0 : headbob + maxheadbob * frame_time / 300) : headbob;
 
 		//input
 		while (SDL_PollEvent(&event))
@@ -424,10 +438,12 @@ int main(int argc, char* args[])
 				case SDLK_w:
 					unvalidated_X += stepSize * cosf(fwd) * frame_time / 1000;
 					unvalidated_Y += stepSize * sinf(fwd) * frame_time / 1000;
+					headbob = maxheadbob;
 					break;
 				case SDLK_s:
 					unvalidated_X -= stepSize * cosf(fwd) * frame_time / 1000;
 					unvalidated_Y -= stepSize * sinf(fwd) * frame_time / 1000;
+					headbob = -maxheadbob;
 					break;
 				case SDLK_ESCAPE:
 					running = false;
@@ -442,20 +458,23 @@ int main(int argc, char* args[])
 		}
 		x_test = unvalidated_X / mapWallW;
 		y_test = unvalidated_Y / mapWallH;
-		if (map[y_test][x_test] == 0)
+		if (map[y_test][x_test] <= 0)
 		{
 			playerX = unvalidated_X;
 			playerY = unvalidated_Y;
 		}
 
+		std::cout << headbob;
+
 		//rendering
 		//https://wiki.libsdl.org/SDL_RenderCopyEx
 		// altura = altura*sen(x) + ancho * cos(x)
+		//ceilingRect.w = hwidth * cosf(right) + hheight * sinf(right);
+		//ceilingRect.h = hheight * cosf(right) + hwidth * sinf(right);
 		//SDL_RenderCopyEx(renderer, floorText, NULL, &floorRect, -angle, NULL, SDL_FLIP_NONE);
 		//SDL_RenderCopyEx(renderer, ceilingText, NULL, &ceilingRect, -angle, NULL, SDL_FLIP_NONE);
 		SDL_RenderCopy(renderer, floorText, NULL, &floorRect);
 		SDL_RenderCopy(renderer, ceilingText, NULL, &ceilingRect);
-		drawMap();
 		int i = 0;
 		SDL_SetRenderDrawColor(renderer, 0xFF, 0xFF, 0xFF, SDL_ALPHA_OPAQUE);
 		while (i < RAY_AMOUNT)
@@ -465,8 +484,8 @@ int main(int argc, char* args[])
 			if (raycast(ray_angle, &hitData))
 			{
 				wallDrawArea.h = (float)height / (hitData.dist * cosf(ray_angle - fwd)) * 50.0f;
-				wallDrawArea.y = hheight - wallDrawArea.h * 0.5;
-				wallDrawArea.x = (int)((float)hwidth + ray_width * (float)i);
+				wallDrawArea.y = hheight - wallDrawArea.h * 0.5 + headbob * hitData.dist;
+				wallDrawArea.x = (int)((float) ray_width * (float)i);
 				textureCrop.x = (int)((float)hitData.uvx * (float)128);
 				colorMod = 0xFF / (hitData.dist / MAX_DIST);
 				colorMod = colorMod < 0xFF ? colorMod : 0xFF;
@@ -475,32 +494,18 @@ int main(int argc, char* args[])
 #endif
 				SDL_SetTextureColorMod(hitData.mapVal, colorMod, colorMod, colorMod);
 				SDL_RenderCopy(renderer, hitData.mapVal, &textureCrop, &wallDrawArea);
+				if (hitData.itemVal) 
+				{
+					wallDrawArea.h = (float)height / (hitData.itemDist * cosf(ray_angle - fwd)) * 50.0f;
+					wallDrawArea.y = hheight - wallDrawArea.h * 0.5;
+					textureCrop.x = (int)((float)hitData.itemUvx * (float)128);
+					SDL_RenderCopy(renderer, hitData.itemVal, &textureCrop, &wallDrawArea);
+				}
 			}
 			i++;
-		}
-		i = 0;
-		//powerUp/enemies
-		while (i < 2)
-		{	
-			float ABx, ABy;
-			ABx = enemies[i].x - playerX;
-			ABy = enemies[i].y - playerY;
-			float dot = (float)playerX * (float)ABx + (float)playerY * (float)ABy;
-			dot /= sqrtf(playerX * playerX + playerY * playerY);
-			dot /= sqrtf(ABx * ABx + ABy * ABy);
-			float spriteAngle = acosf(dot) * 180 / PI;
-			float angleDiff = (int)(angle + 30) % 360 - spriteAngle;
-			std::cout << " detected " << angleDiff;
-			if (angleDiff >= -30 && angleDiff <= 30) 
-			{
-				SDL_RenderCopy(renderer, enemies[i].text, NULL, NULL);
+		}		
 
-			}
-
-			i++;
-		}
-		
-
+		drawMap();
 		drawPlayer();
 
 		SDL_RenderPresent(renderer);
